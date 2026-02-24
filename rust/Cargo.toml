@@ -1,0 +1,12 @@
+[package]
+name = "test"
+version = "0.1.0"
+edition = "2021" 
+
+[dependencies]
+
+maazdb-rs = "0.1.0"
+
+[[bin]]
+name = "basic"
+path = "src/basic.rs"
