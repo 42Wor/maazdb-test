@@ -10,3 +10,7 @@ maazdb-rs = "0.1.0"
 [[bin]]
 name = "basic"
 path = "src/basic.rs"
+
+[[bin]]
+name = "bench-1"
+path = "src/bench/bench-1.rs"

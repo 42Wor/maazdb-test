@@ -1,6 +1,8 @@
-# Created by https://www.toptal.com/developers/gitignore/api/node,python,rust
-# Edit at https://www.toptal.com/developers/gitignore?templates=node,python,rust
-
+data*
+certs*
+maazdb.toml
+make_prompt.py
+prompt.txt
 ### Node ###
 # Logs
 logs
