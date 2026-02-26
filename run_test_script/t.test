@@ -1,0 +1,12 @@
+# Professional Test Script
+test "Node Backend API" {
+    lang: "Node"
+    dir: "./JavaScript"
+    cmd: "node bench/bench-1.js"
+}
+
+test "Python Data Script" {
+    lang: "Python"
+    dir: "./scripts"
+    cmd: "python process.py"
+}
