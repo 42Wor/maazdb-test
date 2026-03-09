@@ -12,9 +12,9 @@ from PyQt6.QtWidgets import (
     QDialog, QPushButton, QLabel, QHBoxLayout, QSplitter, 
     QStatusBar, QListWidget, QListWidgetItem
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QRectF, QSize, QRegularExpression
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QRegularExpression
 from PyQt6.QtGui import (
-    QFont, QColor, QPainter, QSyntaxHighlighter, 
+    QFont, QColor, QSyntaxHighlighter, 
     QTextCharFormat, QTextCursor
 )
 
@@ -25,19 +25,14 @@ DARK_THEME = """
 QMainWindow { background-color: #1e1e1e; }
 QWidget { background-color: #1e1e1e; color: #d4d4d4; font-family: 'Segoe UI', sans-serif; }
 QPlainTextEdit, QTextEdit { 
-    background-color: #1e1e1e; 
-    color: #d4d4d4; 
-    border: none; 
-    font-family: 'Consolas', 'Courier New', monospace;
-    font-size: 13px;
+    background-color: #1e1e1e; color: #d4d4d4; border: none; 
+    font-family: 'Consolas', 'Courier New', monospace; font-size: 13px;
 }
 QListWidget { background-color: #252526; border: 1px solid #333; outline: none; }
 QListWidget::item { padding: 8px; }
 QListWidget::item:selected { background-color: #37373d; color: white; }
 QTabWidget::pane { border: 1px solid #3e3e42; }
-QTabBar::tab { 
-    background: #2d2d2d; color: #969696; padding: 8px 15px; border-right: 1px solid #1e1e1e;
-}
+QTabBar::tab { background: #2d2d2d; color: #969696; padding: 8px 15px; border-right: 1px solid #1e1e1e; }
 QTabBar::tab:selected { background: #1e1e1e; color: white; border-top: 2px solid #007acc; }
 QSplitter::handle { background-color: #3e3e42; }
 QToolBar { background: #333333; border-bottom: 1px solid #2b2b2b; spacing: 10px; padding: 5px; }
@@ -57,21 +52,16 @@ class HistoryManager:
     def load(self):
         if self.history_file.exists():
             try:
-                with open(self.history_file, 'r') as f:
-                    return json.load(f)
-            except:
-                return []
+                with open(self.history_file, 'r') as f: return json.load(f)
+            except: return []
         return []
 
     def add(self, filepath):
         filepath = str(Path(filepath).resolve())
-        if filepath in self.history:
-            self.history.remove(filepath)
+        if filepath in self.history: self.history.remove(filepath)
         self.history.insert(0, filepath)
-        self.history = self.history[:10] # Keep last 10
-        
-        with open(self.history_file, 'w') as f:
-            json.dump(self.history, f)
+        self.history = self.history[:10]
+        with open(self.history_file, 'w') as f: json.dump(self.history, f)
 
 # ==========================================
 # 📝 EDITOR & HIGHLIGHTING
@@ -84,8 +74,12 @@ class ShelfHighlighter(QSyntaxHighlighter):
         keyword_fmt = QTextCharFormat()
         keyword_fmt.setForeground(QColor("#c586c0"))
         keyword_fmt.setFontWeight(QFont.Weight.Bold)
-        for word in ["run", "file", "cmd", "dir"]:
+        for word in ["run", "file", "cmd", "dir", "env"]:
             self.rules.append((QRegularExpression(f"\\b{word}\\b"), keyword_fmt))
+
+        env_var_fmt = QTextCharFormat()
+        env_var_fmt.setForeground(QColor("#9cdcfe"))
+        self.rules.append((QRegularExpression(f"\\benv_[a-zA-Z0-9_]+\\b"), env_var_fmt))
 
         string_fmt = QTextCharFormat()
         string_fmt.setForeground(QColor("#ce9178"))
@@ -106,20 +100,20 @@ class CodeEditor(QPlainTextEdit):
     def __init__(self):
         super().__init__()
         self.highlighter = ShelfHighlighter(self.document())
-        self.setPlaceholderText("Write your test definitions here...")
 
 # ==========================================
-# ⚙️ THREADED RUNNER
+# ⚙️ THREADED RUNNER (MULTI-LANGUAGE)
 # ==========================================
 class TestRunnerThread(QThread):
     log_signal = pyqtSignal(str, str)
     finished_signal = pyqtSignal(str, str)
 
-    def __init__(self, tab_id, run_data, base_dir):
+    def __init__(self, tab_id, run_data, global_env, base_dir):
         super().__init__()
         self.tab_id = tab_id
         self.run_data = run_data
-        self.base_dir = base_dir # The directory of the .mddt file
+        self.global_env = global_env
+        self.base_dir = base_dir
         self.running = True
         self.process = None
 
@@ -130,7 +124,6 @@ class TestRunnerThread(QThread):
         name = self.run_data.get('name', 'Unknown')
         
         if 'file' in self.run_data:
-            # Resolve the relative path based on the .mddt file's location
             script_rel_path = self.run_data['file']
             full_script_path = os.path.normpath(os.path.join(self.base_dir, script_rel_path))
             
@@ -138,13 +131,29 @@ class TestRunnerThread(QThread):
             filename = os.path.basename(full_script_path)
             ext = os.path.splitext(filename)[1].lower()
             
+            # MULTI-LANGUAGE SUPPORT
             if ext == '.py': cmd = f'python -u "{filename}"'
             elif ext == '.js': cmd = f'node "{filename}"'
             elif ext == '.sh': cmd = f'bash "{filename}"'
+            elif ext == '.go': cmd = f'go run "{filename}"'
+            elif ext == '.java': cmd = f'java "{filename}"'
+            elif ext == '.cpp': 
+                exe = filename[:-4] + (".exe" if os.name == 'nt' else "")
+                run_cmd = f'"{exe}"' if os.name == 'nt' else f'./{exe}'
+                cmd = f'g++ "{filename}" -o "{exe}" && {run_cmd}'
+            elif ext == '.rs': 
+                exe = filename[:-3] + (".exe" if os.name == 'nt' else "")
+                run_cmd = f'"{exe}"' if os.name == 'nt' else f'./{exe}'
+                cmd = f'rustc "{filename}" && {run_cmd}'
             else: cmd = f'"{filename}"'
         else:
             cmd = self.run_data.get('cmd', '')
             cwd = os.path.normpath(os.path.join(self.base_dir, self.run_data.get('dir', './')))
+
+        # ENVIRONMENT VARIABLES SETUP
+        merged_env = os.environ.copy()
+        merged_env.update(self.global_env)
+        merged_env.update(self.run_data.get('env', {}))
 
         self.emit_log(f"🚀 STARTING: {name}")
         self.emit_log(f"📂 CWD: {cwd}")
@@ -156,7 +165,8 @@ class TestRunnerThread(QThread):
         try:
             self.process = subprocess.Popen(
                 cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, shell=True, encoding="utf-8", errors="replace", bufsize=1
+                text=True, shell=True, encoding="utf-8", errors="replace", bufsize=1,
+                env=merged_env
             )
             while self.running:
                 line = self.process.stdout.readline()
@@ -190,7 +200,8 @@ class MDDTRunnerIDE(QMainWindow):
         self.resize(1200, 800)
         self.setStyleSheet(DARK_THEME)
 
-        self.parsed_runs = {}
+        self.parsed_runs = [] # Changed to List to support duplicate names
+        self.global_env = {}
         self.active_threads = {}
         self.tab_counter = 0
 
@@ -205,7 +216,7 @@ class MDDTRunnerIDE(QMainWindow):
         actions = [
             ("💾 Save", self.save_file),
             ("|", None),
-            ("➕ Add File (Relative)", self.auto_generate_run),
+            ("➕ Add File", self.auto_generate_run),
             ("▶ Run Selected", self.execute_selected_run),
             ("⏭ Run All", self.execute_all_runs)
         ]
@@ -220,7 +231,6 @@ class MDDTRunnerIDE(QMainWindow):
         main_splitter = QSplitter(Qt.Orientation.Vertical)
         top_splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        # Sidebar
         sidebar_widget = QWidget()
         sidebar_layout = QVBoxLayout(sidebar_widget)
         sidebar_layout.setContentsMargins(0,0,0,0)
@@ -233,14 +243,12 @@ class MDDTRunnerIDE(QMainWindow):
         sidebar_layout.addWidget(self.run_list)
         top_splitter.addWidget(sidebar_widget)
 
-        # Editor
         self.editor = CodeEditor()
         self.editor.textChanged.connect(self.parse_script)
         top_splitter.addWidget(self.editor)
         top_splitter.setSizes([250, 800])
         main_splitter.addWidget(top_splitter)
 
-        # Tabs
         self.tabs = QTabWidget()
         self.tabs.setTabsClosable(True)
         self.tabs.tabCloseRequested.connect(self.close_tab)
@@ -261,8 +269,26 @@ class MDDTRunnerIDE(QMainWindow):
             with open(filepath, 'r', encoding='utf-8') as f:
                 self.editor.setPlainText(f.read())
         else:
-            # Default template for new files
-            self.editor.setPlainText("# MDDT Test Script\n\nrun \"Example Test\" {\n    file: \"./src/main.py\"\n}\n")
+            default_code = """# Global Environment Variables
+env {
+    DB_HOST: "localhost"
+    PORT: "8080"
+}
+
+run "Bench-1" {
+    file: "../python/bench/bench-1.py"
+}
+
+run "Bench-1" {
+    file: "../JavaScript/bench/bench-1.js"
+    env_PORT: "9090" # Overrides global PORT
+}
+
+run "Bench-1" {
+    file: "../rust/src/bench/bench-1.rs"
+}
+"""
+            self.editor.setPlainText(default_code)
             self.save_file()
             
         self.parse_script()
@@ -274,54 +300,81 @@ class MDDTRunnerIDE(QMainWindow):
         self.status_bar.showMessage("File saved.", 3000)
 
     def auto_generate_run(self):
-        # Open file dialog to select a script
         base_dir = os.path.dirname(self.current_file)
         file_path, _ = QFileDialog.getOpenFileName(self, "Select Script to Add", base_dir, "All Files (*)")
         
         if file_path:
-            # Calculate RELATIVE path for Git compatibility
-            rel_path = os.path.relpath(file_path, base_dir)
-            rel_path = rel_path.replace("\\", "/") # Force forward slashes for cross-platform
-            
-            if not rel_path.startswith("."):
-                rel_path = "./" + rel_path
-
+            rel_path = os.path.relpath(file_path, base_dir).replace("\\", "/")
+            if not rel_path.startswith("."): rel_path = "./" + rel_path
             run_name = Path(file_path).stem.replace("_", " ").title()
             block = f'\nrun "{run_name}" {{\n    file: "{rel_path}"\n}}\n'
             self.editor.appendPlainText(block)
 
     def parse_script(self):
         text = self.editor.toPlainText()
-        self.parsed_runs = {}
+        self.parsed_runs = []
+        self.global_env = {}
         self.run_list.clear()
+
+        # 1. Parse Global Env
+        env_match = re.search(r'^env\s*\{([^}]+)\}', text, re.MULTILINE | re.DOTALL)
+        if env_match:
+            for line in env_match.group(1).split('\n'):
+                if ':' in line:
+                    k, v = line.split(':', 1)
+                    self.global_env[k.strip()] = v.strip().strip('"').strip("'")
+
+        # 2. Parse Runs
         block_pattern = re.compile(r'run\s+"([^"]+)"\s*\{([^}]+)\}', re.DOTALL)
-        
         for match in block_pattern.finditer(text):
             name, body = match.group(1), match.group(2)
+            
+            run_data = {"name": name, "env": {}}
+            
             file_m = re.search(r'file:\s*"([^"]+)"', body)
             cmd_m = re.search(r'cmd:\s*"([^"]+)"', body)
             dir_m = re.search(r'dir:\s*"([^"]+)"', body)
 
-            run_data = {"name": name}
             if file_m: run_data["file"] = file_m.group(1)
             else:
                 run_data["cmd"] = cmd_m.group(1) if cmd_m else ""
                 run_data["dir"] = dir_m.group(1) if dir_m else "./"
 
-            self.parsed_runs[name] = run_data
-            self.run_list.addItem(QListWidgetItem(f"🧪 {name}"))
+            # Parse Local Envs (e.g., env_PORT: "9090")
+            for env_m in re.finditer(r'env_([a-zA-Z0-9_]+):\s*"([^"]+)"', body):
+                run_data["env"][env_m.group(1)] = env_m.group(2)
+
+            self.parsed_runs.append(run_data)
+            
+            # UI Display: Append extension if it's a file so duplicates are distinguishable
+            display_name = f"🧪 {name}"
+            if file_m:
+                ext = Path(file_m.group(1)).suffix
+                display_name += f" ({ext})"
+                
+            item = QListWidgetItem(display_name)
+            item.setData(Qt.ItemDataRole.UserRole, len(self.parsed_runs) - 1) # Store Index
+            self.run_list.addItem(item)
 
     def execute_selected_run(self):
         selected = self.run_list.currentItem()
-        if selected: self.open_run(selected.text()[2:])
-        else: self.status_bar.showMessage("⚠️ Select a test first.", 3000)
+        if selected: 
+            index = selected.data(Qt.ItemDataRole.UserRole)
+            self.open_run(index)
+        else: 
+            self.status_bar.showMessage("⚠️ Select a test first.", 3000)
 
     def execute_all_runs(self):
         for i in range(self.run_list.count()):
-            self.open_run(self.run_list.item(i).text()[2:])
+            index = self.run_list.item(i).data(Qt.ItemDataRole.UserRole)
+            self.open_run(index)
 
-    def open_run(self, run_name):
-        if run_name not in self.parsed_runs: return
+    def open_run(self, run_index):
+        if run_index < 0 or run_index >= len(self.parsed_runs): return
+        
+        run_data = self.parsed_runs[run_index]
+        run_name = run_data["name"]
+        
         self.tab_counter += 1
         tab_id = f"tab_{self.tab_counter}"
         
@@ -329,11 +382,16 @@ class MDDTRunnerIDE(QMainWindow):
         console.setReadOnly(True)
         console.setStyleSheet("background-color: #1e1e1e; color: #cccccc; font-family: Consolas;")
         
-        tab_index = self.tabs.addTab(console, f"▶ {run_name}")
+        # Add extension to tab name if available
+        tab_title = f"▶ {run_name}"
+        if "file" in run_data:
+            tab_title += f" ({Path(run_data['file']).suffix})"
+            
+        tab_index = self.tabs.addTab(console, tab_title)
         self.tabs.setCurrentIndex(tab_index)
 
         base_dir = os.path.dirname(self.current_file)
-        thread = TestRunnerThread(tab_id, self.parsed_runs[run_name], base_dir)
+        thread = TestRunnerThread(tab_id, run_data, self.global_env, base_dir)
         thread.log_signal.connect(self.append_to_tab)
         thread.finished_signal.connect(self.thread_finished)
         
@@ -355,7 +413,7 @@ class MDDTRunnerIDE(QMainWindow):
             icon = "✅" if status == "Pass" else "❌"
             old_text = self.tabs.tabText(idx).replace("▶ ", "")
             self.tabs.setTabText(idx, f"{icon} {old_text}")
-            self.status_bar.showMessage(f"Finished: {old_text} ({status})", 3000)
+            self.status_bar.showMessage(f"Finished ({status})", 3000)
             self.active_threads[tab_id]["thread"] = None
 
     def close_tab(self, index):
@@ -380,7 +438,7 @@ class MDDTRunnerIDE(QMainWindow):
         event.accept()
 
 # ==========================================
-# 🚀 STARTUP DIALOG (FILE & HISTORY)
+# 🚀 STARTUP DIALOG
 # ==========================================
 class StartupDialog(QDialog):
     def __init__(self):
@@ -392,12 +450,10 @@ class StartupDialog(QDialog):
         self.history_manager = HistoryManager()
 
         layout = QVBoxLayout()
-        
         lbl = QLabel("MDDT Test Runner")
         lbl.setStyleSheet("font-size: 20px; font-weight: bold; color: white;")
         layout.addWidget(lbl)
 
-        # Buttons
         btn_layout = QHBoxLayout()
         btn_new = QPushButton("📄 Create New .mddt File")
         btn_new.clicked.connect(self.create_new)
@@ -408,7 +464,6 @@ class StartupDialog(QDialog):
         btn_layout.addWidget(btn_open)
         layout.addLayout(btn_layout)
 
-        # History List
         layout.addWidget(QLabel("\nRecent Files:"))
         self.history_list = QListWidget()
         for path in self.history_manager.history:
@@ -417,7 +472,6 @@ class StartupDialog(QDialog):
                 
         self.history_list.itemDoubleClicked.connect(self.open_history_item)
         layout.addWidget(self.history_list)
-
         self.setLayout(layout)
 
     def create_new(self):
