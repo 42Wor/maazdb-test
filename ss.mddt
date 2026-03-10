@@ -1,0 +1,27 @@
+# Compiler Paths (Optional)
+compilers {
+    python: "C:/Users/maaz/AppData/Local/Programs/Python/Python310/python.EXE"
+    python3: "C:/Users/maaz/AppData/Local/Microsoft/WindowsApps/python3.EXE"
+    node: "C:/Program Files/Volta/node.EXE"
+    rustc: "C:/Users/maaz/.cargo/bin/rustc.EXE"
+    bash: "C:/Users/maaz/AppData/Local/Microsoft/WindowsApps/bash.EXE"
+}
+
+# Global Environment Variables
+env {
+    DB_HOST: "localhost"
+    PORT: "8080"
+}
+
+run "Bench-1" {
+    file: "../python/bench/bench-1.py"
+}
+
+run "Bench-2" {
+    file: "../JavaScript/bench/bench-1.js"
+    env_PORT: "9090" # Overrides global PORT
+}
+
+run "Bench-3" {
+    file: "../rust/src/bench/bench-1.rs"
+}
