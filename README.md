@@ -1,5 +1,8 @@
 # MaazDB Test
 
+wim
+
+
 C:\Users\maaz\Desktop\maazdb\target\release\maazdb-server.exe
 
 cd JavaScript
