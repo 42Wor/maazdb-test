@@ -28,6 +28,9 @@ cargo run --release --bin bench-1
 cd python
 py  bench/bench-1.py
 
+python3 -m venv venv
+source venv/bin/activate
+
 
 # 🔹 1. Baseline Performance Tests
 
