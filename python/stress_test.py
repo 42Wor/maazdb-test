@@ -11,9 +11,9 @@ def main():
         print("🚀 Connected to MAAZDB. Starting 4GB Stress Test...")
 
         # 2. Setup Environment
-        db.query("DROP DATABASE IF EXISTS stress_db;")
-        db.query("CREATE DATABASE stress_db;")
-        db.query("USE stress_db;")
+        db.query("DROP DATABASE IF EXISTS stress_db_py;")
+        db.query("CREATE DATABASE stress_db_py;")
+        db.query("USE stress_db_py;")
         db.query("CREATE TABLE big_data (id SERIAL PRIMARY KEY, payload TEXT);")
 
         # 3. Configuration for 4GB
@@ -24,14 +24,10 @@ def main():
         print(f"📦 Target: {total_rows} rows in {total_batches} batches.")
         print("⚙️ Pre-building optimized batch query string...")
 
-        # ========================================================================
-        # CRITICAL OPTIMIZATION: Pre-build the query string EXACTLY ONCE.
-        # In Python, using list multiplication and .join() is highly optimized 
-        # in CPython and prevents memory fragmentation from string concatenation.
-        # ========================================================================
         dummy_data = "A" * 100
         # Creates: "('A...A'), ('A...A'), ..."
         values_clause = ", ".join([f"('{dummy_data}')"] * batch_size)
+       # print(values_clause)
         batch_query = f"INSERT INTO big_data (payload) VALUES {values_clause};"
         # ========================================================================
 
@@ -88,9 +84,9 @@ def main():
         print("🗑️ Delete (Row 500) complete.")
 
         # 6. THE IDLE PURGE TEST
-        print("\n🕒 Waiting 65 seconds for Idle Memory Purge...")
+        print("\n🕒 Waiting 10 seconds for Idle Memory Purge...")
         print("(Watch your monitor tool: Physical Memory should drop significantly)")
-        time.sleep(65)
+        time.sleep(10)
 
         print("\n🏁 Stress Test Finished. MAAZDB is VPS-Stable.")
 
